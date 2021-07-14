@@ -43,6 +43,11 @@ func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity in
 
 // Accept 接收工作任务
 func (b *Boss) Accept(t interface{}) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
 	b.taskChan <- t
 }
 
@@ -56,10 +61,12 @@ func (b *Boss) listen(ctx context.Context) {
 	for {
 		select {
 		case task, ok := <-b.taskChan:
-			//分配工作
 			if !ok {
+				//通道关闭，所有协程全部退出
 				task = nil
+				b.cancel()
 			} else {
+				//分配工作
 				b.dispatchTask(task)
 			}
 		case <-ctx.Done():
@@ -67,6 +74,11 @@ func (b *Boss) listen(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// Stop 关闭任务通道，剩余任务完成后，所有协程全部退出
+func (b *Boss) Stop() {
+	close(b.taskChan)
 }
 
 //给工人分配工作

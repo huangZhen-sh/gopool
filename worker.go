@@ -2,6 +2,7 @@ package gopool
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 )
@@ -56,6 +57,7 @@ func (w *worker) listen(ctx context.Context) {
 			}
 		case <-ctx.Done():
 			//你被解雇了
+			fmt.Printf("工人%v被解雇了...\n", w.tag)
 			return
 			//default:
 			//	fmt.Printf("工人%v==========================\n", w.tag)
