@@ -19,10 +19,10 @@ type Boss struct {
 	lock                sync.Mutex           //互斥锁
 	ctx                 context.Context
 	cancel              context.CancelFunc
-	workerLeader        WorkerLeaderInterface
+	doWork              DoWorkInterface //工人详细工作内容接口
 }
 
-func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity int, taskBufferSize int, wLeader WorkerLeaderInterface, chkTime int) *Boss {
+func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity int, taskBufferSize int, chkTime int, doWork DoWorkInterface) *Boss {
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &Boss{
 		workerMaxIdleTime:   fireTime,
@@ -33,8 +33,8 @@ func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity in
 		freeWorkers:         make(chan WorkerInterface, maxWorkerQuantity),
 		ctx:                 ctx,
 		cancel:              cancel,
-		workerLeader:        wLeader,
 		chkIdleTimeInterval: chkTime,
+		doWork:              doWork,
 	}
 	go w.listen(ctx)
 	go w.fireWorker(ctx)
@@ -93,7 +93,7 @@ func (b *Boss) callWorker() WorkerInterface {
 			//如果没有已雇佣的工人，重新雇佣一个
 			wLen := len(b.workers)
 			if b.maxWorkerNum > wLen {
-				w := b.workerLeader.CWorker(b)
+				w := NewWorker(b, b.doWork)
 				b.lock.Lock()
 				b.workers = append(b.workers, w)
 				b.lock.Unlock()
@@ -128,7 +128,7 @@ func (b *Boss) doFireWorker() {
 	maxFireQuantity := len(b.workers) - b.minWorkerNum
 	fireQuantity := 0
 	for _, w := range b.workers {
-		if w.IsFired() && fireQuantity < maxFireQuantity {
+		if time.Now().Sub(w.LastWorkTime()) > b.workerMaxIdleTime && fireQuantity < maxFireQuantity {
 			fireQuantity++
 			w.DoFired()
 			fmt.Printf("%v工人被开除\n", w.Tag())
@@ -145,4 +145,18 @@ func (b *Boss) doFireWorker() {
 		b.workers = activeWorkers
 		b.lock.Unlock()
 	}
+}
+
+// BossCtx 招聘工人时就告知对方，如果老板破产或者不想干了、工人自然也要跟着被解雇
+func (b *Boss) BossCtx() context.Context {
+	return b.ctx
+}
+
+func (b *Boss) WorkerQuantity() int {
+	return len(b.workers)
+}
+
+// AddToFreeWorkers 工人向老板汇报工作的接口
+func (b *Boss) AddToFreeWorkers(w WorkerInterface) {
+	b.freeWorkers <- w
 }

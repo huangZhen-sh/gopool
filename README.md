@@ -10,23 +10,18 @@ go get github.com/huangZhen-sh/gopool
 
 <h3>使用方法</h3>
 
-1、创建工人对象，需要实现如下接口
+1、定义工作通道的数据类型，例如
 ````
-type WorkerInterface interface {
-	AcceptTask(task interface{}) //接收任务
-	Status() bool                //标识是否已经被开除
-	Tag() int                    //工人标签
-	IsFired() bool               //是否会被开除
-	DoFired()                    //工人被开除
-}
+type workChanType int
 ````
-2、创建工头对象lw，需要实现如下接口
+
+2、创建对象dw实现工人详细完成工作的接口
 ````
-type WorkerLeaderInterface interface {
-	CWorker(b BossInterface) WorkerInterface
+type DoWorkInterface interface {
+	DetailWork(w WorkerInterface,t interface{})
 }
 ````
 3、创建boos，管理工人，监控工作通道，分配任务
 ```
-gopool.NewBoss(10*time.Second, 20, 1, 20, lw, 10)
+gopool.NewBoss(10*time.Second, 20, 1, 20, 10, dw)
 ````
