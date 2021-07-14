@@ -1,3 +1,6 @@
+##简介
+go协程管理，定义最小和最大协程数，任务繁忙时多开协程数，任务空闲时多余的协程自动清除
+
 ##安装
 go get github.com:huangZhen-sh/gopool
 
