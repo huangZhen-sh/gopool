@@ -5,7 +5,7 @@ go协程管理，定义最小和最大协程数，任务繁忙时多开协程数
 <h3>安装</h3>
 
 ````
-go get github.com:huangZhen-sh/gopool
+go get github.com/huangZhen-sh/gopool
 ````
 
 <h3>使用方法</h3>
