@@ -21,7 +21,7 @@ type DoWorkInterface interface {
 	DetailWork(w WorkerInterface,t interface{})
 }
 ````
-3、创建boos，管理工人，监控工作通道，分配任务
+3、创建boss，管理工人，监控工作通道，分配任务
 ```
 gopool.NewBoss(10*time.Second, 20, 1, 20, 10, dw)
 ````
