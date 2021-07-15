@@ -20,6 +20,7 @@ type Boss struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	doWork              DoWorkInterface //工人详细工作内容接口
+	waitStopChan        chan bool       //等待结束
 }
 
 func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity int, taskBufferSize int, chkTime int, doWork DoWorkInterface) *Boss {
@@ -35,6 +36,7 @@ func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity in
 		cancel:              cancel,
 		chkIdleTimeInterval: chkTime,
 		doWork:              doWork,
+		waitStopChan:        make(chan bool),
 	}
 	go w.listen(ctx)
 	go w.fireWorker(ctx)
@@ -63,8 +65,9 @@ func (b *Boss) listen(ctx context.Context) {
 		case task, ok := <-b.taskChan:
 			if !ok {
 				//通道关闭，所有协程全部退出
-				task = nil
+				b.taskChan = nil
 				b.cancel()
+				b.waitStopChan <- true
 			} else {
 				//分配工作
 				b.dispatchTask(task)
@@ -76,9 +79,11 @@ func (b *Boss) listen(ctx context.Context) {
 	}
 }
 
-// Stop 关闭任务通道，剩余任务完成后，所有协程全部退出
-func (b *Boss) Stop() {
+// Stop 关闭任务通道，等待，剩余任务完成后，所有协程全部退出
+func (b *Boss) Stop() bool {
 	close(b.taskChan)
+	<-b.waitStopChan
+	return true
 }
 
 //给工人分配工作
