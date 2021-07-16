@@ -2,7 +2,6 @@ package gopool
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 )
@@ -13,6 +12,7 @@ type worker struct {
 	lastWorkTime  time.Time //最后工作时间
 	ctx           context.Context
 	cancel        context.CancelFunc
+	workingStatus bool
 	status        bool
 	taskChan      chan interface{} //工作通道
 	bossInterface BossInterface    //向老板汇报工作的接口
@@ -57,7 +57,9 @@ func (w *worker) listen(ctx context.Context) {
 			}
 		case <-ctx.Done():
 			//你被解雇了
-			fmt.Printf("工人%v被解雇了...\n", w.tag)
+			if w.bossInterface.Debug() {
+				log.Printf("工人%v被解雇了...", w.tag)
+			}
 			return
 			//default:
 			//	fmt.Printf("工人%v==========================\n", w.tag)
@@ -67,12 +69,25 @@ func (w *worker) listen(ctx context.Context) {
 }
 
 func (w *worker) execute(t interface{}) {
+	if w.bossInterface.Debug() == true {
+		log.Printf("%v工人开始干活...", w.Tag())
+		time.Sleep(1 * time.Second)
+	}
 	w.doWork.DetailWork(w, t)
 	w.lastWorkTime = time.Now()
 	w.bossInterface.AddToFreeWorkers(w)
+	w.workingStatus = false
+	if w.bossInterface.Debug() == true {
+		log.Printf("%v工人完成任务，准备接收下次任务...", w.Tag())
+		//time.Sleep(1 * time.Second)
+	}
 }
 
 func (w *worker) AcceptTask(t interface{}) {
+	if w.bossInterface.Debug() == true {
+		log.Printf("%v工人接收任务...", w.Tag())
+	}
+	w.workingStatus = true
 	w.taskChan <- t
 }
 
@@ -92,4 +107,8 @@ func (w *worker) DoFired() {
 	w.cancel()
 	w.status = false
 	return
+}
+
+func (w *worker) WorkingStatus() bool {
+	return w.workingStatus
 }

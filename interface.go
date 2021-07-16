@@ -16,10 +16,12 @@ type WorkerInterface interface {
 	Tag() int                    //工人标签
 	DoFired()                    //工人被开除
 	LastWorkTime() time.Time     //最后工作时间
+	WorkingStatus() bool
 }
 
 type BossInterface interface {
 	BossCtx() context.Context
 	AddToFreeWorkers(w WorkerInterface)
 	WorkerQuantity() int
+	Debug() bool
 }

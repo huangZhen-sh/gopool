@@ -2,7 +2,6 @@ package gopool
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -20,10 +19,10 @@ type Boss struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	doWork              DoWorkInterface //工人详细工作内容接口
-	waitStopChan        chan bool       //等待结束
+	debug               bool
 }
 
-func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity int, taskBufferSize int, chkTime int, doWork DoWorkInterface) *Boss {
+func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity int, taskBufferSize int, chkTime int, doWork DoWorkInterface, debug ...bool) *Boss {
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &Boss{
 		workerMaxIdleTime:   fireTime,
@@ -36,8 +35,12 @@ func NewBoss(fireTime time.Duration, maxWorkerQuantity int, minWorkerQuantity in
 		cancel:              cancel,
 		chkIdleTimeInterval: chkTime,
 		doWork:              doWork,
-		waitStopChan:        make(chan bool),
 	}
+	if len(debug) > 0 {
+		w.debug = debug[0]
+	}
+	//先招聘一个工人
+	w.createWorker()
 	go w.listen(ctx)
 	go w.fireWorker(ctx)
 	return w
@@ -50,6 +53,9 @@ func (b *Boss) Accept(t interface{}) {
 			log.Println(err)
 		}
 	}()
+	if b.debug == true {
+		log.Println("boss接收任务...")
+	}
 	b.taskChan <- t
 }
 
@@ -64,16 +70,20 @@ func (b *Boss) listen(ctx context.Context) {
 		select {
 		case task, ok := <-b.taskChan:
 			if !ok {
-				//通道关闭，所有协程全部退出
+				//通道关闭，置成nil,不要再进入此case
 				b.taskChan = nil
-				b.cancel()
-				b.waitStopChan <- true
 			} else {
 				//分配工作
+				if b.debug == true {
+					log.Println("boss分配任务..")
+					//time.Sleep(1 * time.Second)
+				}
 				b.dispatchTask(task)
 			}
 		case <-ctx.Done():
-			//下班回家
+			if b.debug == true {
+				log.Println("boss下班，工人解散...")
+			}
 			return
 		}
 	}
@@ -81,16 +91,55 @@ func (b *Boss) listen(ctx context.Context) {
 
 // Stop 关闭任务通道，等待，剩余任务完成后，所有协程全部退出
 func (b *Boss) Stop() bool {
+	//关闭工作通道
 	close(b.taskChan)
-	<-b.waitStopChan
+	if b.debug == true {
+		log.Println("boss准备下班，不再接收任务，等待工人完成任务..")
+	}
+	//等待工人完成工作,如果所有的工人都3秒钟没干活了，那肯定是活干完了
+	for {
+		isEnd := true
+		for _, w := range b.workers {
+			if w.Status() == false {
+				continue
+			}
+			if w.WorkingStatus() == true {
+				isEnd = false
+				break
+			}
+			if w.WorkingStatus() == false && time.Now().Sub(w.LastWorkTime()) < 3*time.Second {
+				isEnd = false
+				break
+			}
+		}
+		if isEnd == true {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if b.debug == true {
+		log.Println("boss剩余工作都完成，下班准备就绪...")
+	}
+	b.cancel()
 	return true
 }
 
 //给工人分配工作
 func (b *Boss) dispatchTask(task interface{}) {
 	w := b.callWorker()
-	fmt.Printf("%v工人接收工作\n", w.Tag())
 	w.AcceptTask(task)
+}
+
+//招聘工人
+func (b *Boss) createWorker() {
+	w := NewWorker(b, b.doWork)
+	b.lock.Lock()
+	b.workers = append(b.workers, w)
+	b.lock.Unlock()
+	b.freeWorkers <- w
+	if b.debug == true {
+		log.Println("boss成功招聘一位工人..")
+	}
 }
 
 //呼叫工人
@@ -110,11 +159,7 @@ func (b *Boss) callWorker() WorkerInterface {
 			//如果没有已雇佣的工人，重新雇佣一个
 			wLen := len(b.workers)
 			if b.maxWorkerNum > wLen {
-				w := NewWorker(b, b.doWork)
-				b.lock.Lock()
-				b.workers = append(b.workers, w)
-				b.lock.Unlock()
-				b.freeWorkers <- w
+				b.createWorker()
 			}
 		}
 	}
@@ -148,7 +193,9 @@ func (b *Boss) doFireWorker() {
 		if time.Now().Sub(w.LastWorkTime()) > b.workerMaxIdleTime && fireQuantity < maxFireQuantity {
 			fireQuantity++
 			w.DoFired()
-			fmt.Printf("%v工人被开除\n", w.Tag())
+			if b.debug == true {
+				log.Printf("boss下发通知：开除%v工人...", w.Tag())
+			}
 		}
 	}
 	if fireQuantity > 0 {
@@ -176,4 +223,8 @@ func (b *Boss) WorkerQuantity() int {
 // AddToFreeWorkers 工人向老板汇报工作的接口
 func (b *Boss) AddToFreeWorkers(w WorkerInterface) {
 	b.freeWorkers <- w
+}
+
+func (b *Boss) Debug() bool {
+	return b.debug
 }
